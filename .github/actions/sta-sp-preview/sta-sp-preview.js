@@ -43,8 +43,14 @@ function removeExtension(path) {
  * @returns {Promise<*|boolean>}
  */
 async function operateOnPath(endpoint, path, operation = 'preview') {
+  let publishPath = path;
+  if (path.endsWith('.docx')) {
+    publishPath = removeExtension(publishPath);
+  } else if (path.endsWith('.xlsx')) {
+    publishPath = `${removeExtension(publishPath)}.json`;
+  }
   try {
-    const resp = await fetch(`${endpoint}${path}`, {
+    const resp = await fetch(`${endpoint}${publishPath}`, {
       method: 'POST',
       body: '{}',
       headers: {
@@ -54,30 +60,30 @@ async function operateOnPath(endpoint, path, operation = 'preview') {
     });
     if (!resp.ok) {
       const xError = resp.headers.get('x-error');
-      core.debug(`.${operation} operation failed on ${path}: ${resp.status} : ${resp.statusText} : ${xError}`);
+      core.debug(`.${operation} operation failed on ${publishPath}: ${resp.status} : ${resp.statusText} : ${xError}`);
 
       // Check for unsupported media type or 404, and try without an extension
       if (resp.status === 415 || (operation === 'live' && resp.status === 404)) {
         const noExtPath = removeExtension(path);
         // Avoid infinite loop by ensuring the path changed.
-        if (noExtPath !== path) {
+        if (noExtPath !== path && noExtPath !== publishPath) {
           core.info(`❓ Failed with an "Unsupported Media" or 404 error. Retrying operation without an extension: ${noExtPath}`);
           return operateOnPath(endpoint, noExtPath, operation);
         }
-        core.warning(`❌ Operation failed on extensionless ${path}: ${xError}`);
+        core.warning(`❌ Operation failed on extensionless ${publishPath}: ${xError}`);
       } else if (resp.status === 423) {
-        core.warning(`❌ Operation failed on ${path}. The file appears locked. Is it being edited? (${xError})`);
+        core.warning(`❌ Operation failed on ${publishPath}. The file appears locked. Is it being edited? (${xError})`);
       } else {
-        core.warning(`❌ Operation failed on ${path}: ${xError}`);
+        core.warning(`❌ Operation failed on ${publishPath}: ${xError}`);
       }
       return false;
     }
 
     const data = await resp.json();
-    core.info(`✓ Operation successful on ${path}: ${data[operation].url}`);
+    core.info(`✓ Operation successful on ${publishPath}: ${data[operation].url}`);
     return true;
   } catch (error) {
-    core.warning(`❌ Operation call failed on ${path}: ${error.message}`);
+    core.warning(`❌ Operation call failed on ${publishPath}: ${error.message}`);
   }
 
   return false;
